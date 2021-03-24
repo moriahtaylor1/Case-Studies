@@ -1,5 +1,5 @@
 # Case-Studies
-Some final reports from my senior-level case studies course (STA440 at Duke University)
+Some final reports from my senior-level case studies course (STA440 at Duke University - Fall 2019)
 
 ## Case Study 2 - World Happiness
 Focuses on creating compelling visualizations in Tableau using data from the World Happiness Report. This was a group assignment.
