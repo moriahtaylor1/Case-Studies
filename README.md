@@ -1,10 +1,10 @@
 # Case-Studies
 Some final reports from my senior-level case studies course (STA440 at Duke University)
 
-#Case Study 2 - World Happiness
+## Case Study 2 - World Happiness
 Focuses on creating compelling visualizations in Tableau using data from the World Happiness Report. This was a group assignment.
 
-#Final Case Study
+## Final Case Study
 The final case study was an individual assignment. We were allowed to pick any type of data to use. I chose to scrape information about 
 NBA basketball players. 
 
