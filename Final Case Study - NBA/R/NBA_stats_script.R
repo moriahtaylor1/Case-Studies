@@ -1,0 +1,668 @@
+##LOADING PACKAGES##
+###Source for function: https://stackoverflow.com/questions/9341635/check-for-installed-packages-before-running-install-packages###
+pkgTest <- function(x)
+{
+  if (!require(x,character.only = TRUE))
+  {
+    install.packages(x,repos = "http://cran.r-project.org", dep=TRUE)
+    if(!require(x,character.only = TRUE)) stop("Package not found")
+  }
+}
+
+pkgTest("tidyverse")
+pkgTest("janitor")
+pkgTest("rvest")
+pkgTest("corrplot")
+pkgTest("dplyr")
+pkgTest("curl")
+pkgTest("BBmisc")
+pkgTest("data.table")
+pkgTest("statsr")
+pkgTest("Matching")
+pkgTest("infer")
+library(tidyverse)    #data wrangling
+library(janitor)    #data cleaning
+library(rvest)    #web scraping
+library(corrplot)    #correlation plots
+library(dplyr)    #tidyverse
+library(curl)    #web scraping
+library(BBmisc)    #misc functions
+library(data.table)    #data table methods
+library(statsr)    #inference function
+library(Matching)    #matching
+library(infer)    #inference
+
+
+
+##SEASON STATS SCRAPE FUNCTION##
+###Source for function: http://blog.schochastics.net/post/analyzing-nba-player-data-i-getting-data/###
+scrape_stats <- function(season){
+  #scrape
+  url <- paste0("https://www.basketball-reference.com/leagues/NBA_",season,"_per_game.html")
+  stats_pg <- url %>% 
+    read_html() %>% 
+    html_table() %>% 
+    .[[1]]
+  
+  #clean
+  player_stats <- stats_pg %>% 
+    remove_empty("cols") %>%
+    clean_names() %>% 
+    dplyr::filter(!player=="Player") %>%
+    mutate_at(vars(-c(player,tm,pos)), as.numeric) %>% 
+    mutate_at(vars(-c(player,tm,pos)), funs(replace(., is.na(.), 0))) %>% 
+    as_tibble() %>% 
+    group_by(player) %>% 
+    slice(1) %>% 
+    ungroup()
+  player_stats <- as.data.table(player_stats)
+  #add column indicating year
+  player_stats$year <- season - 1
+  #rename columns
+  names(player_stats) <- c("rank", "player", "pos", "age", "team", "games_played", 
+                           "games_started", "min", "fg", "fga", "fg_perc", 
+                           "threes_made", "threes_att", "threes_perc", 
+                           "twos_made", "twos_att", "twos_perc", "efg_perc", 
+                           "ft", "fta", "ft_perc", "o_reb", "d_reb", 
+                           "tot_reb", "ast", "stl", "blk", "tover", 
+                           "fouls", "pts", "year")
+  return(player_stats[, -1])    #remove rank as it is arbitrary
+  
+
+  
+##SCRAPE SEASON STATS FOR EACH YEAR##
+yr1997 <- scrape_stats(1997)
+yr1998 <- scrape_stats(1998)
+yr1999 <- scrape_stats(1999)
+yr2000 <- scrape_stats(2000)
+yr2001 <- scrape_stats(2001)
+yr2002 <- scrape_stats(2002)
+yr2003 <- scrape_stats(2003)
+yr2004 <- scrape_stats(2004)
+yr2005 <- scrape_stats(2005)
+yr2006 <- scrape_stats(2006)
+yr2007 <- scrape_stats(2007)
+yr2008 <- scrape_stats(2008)
+yr2009 <- scrape_stats(2009)
+yr2010 <- scrape_stats(2010)
+yr2011 <- scrape_stats(2011)
+yr2012 <- scrape_stats(2012)
+yr2013 <- scrape_stats(2013)
+yr2014 <- scrape_stats(2014)
+yr2015 <- scrape_stats(2015)
+yr2016 <- scrape_stats(2016)
+
+##COMBINE ALL SEASON STATS 1996-2015##
+all <- rbind(yr1997, yr1998, yr1999, yr2000,
+             yr2001, yr2002, yr2003, yr2004, yr2005,
+             yr2006, yr2007, yr2008, yr2009, yr2010,
+             yr2011, yr2012, yr2013, yr2014, yr2015, yr2016)
+
+
+
+##PLAYER BIO INFO SCRAPE FUNCTION##
+###Source for function: https://rpubs.com/brandonemmerich/collecting-nba-data###
+get.player.base.info <- function(x) {
+  html.raw <- x %>% read_html()
+  #Store output as a vector of character strings
+  vector.raw <- 
+    html.raw %>%
+    html_nodes(".center , .right , .left") %>%
+    html_text()
+  #Arrange vector into columns
+  df.raw <- 
+    tibble(
+      player      = vector.raw,
+      year.start  = lead(vector.raw,1),
+      year.retire = lead(vector.raw,2),
+      position    = lead(vector.raw,3),
+      height      = lead(vector.raw,4),
+      weight      = lead(vector.raw,5),
+      date.birth  = lead(vector.raw,6),
+      college     = lead(vector.raw,7)
+    )
+  #Clean the output
+  df.raw %>%
+    #Every 8th row is a legitmate row that we want to save, that's because the dataframe has 8 columns
+    .[-c(1:8),] %>%
+    .[seq(1,nrow(.),8),]
+}
+
+
+
+##SCRAPE PLAYER BIO INFO##
+dfs <- list()
+for (i in 1:length(letters)){    #iterate over alphabet
+  if (i==24){    #no players with last name starting with 'X'
+    next
+  }
+  l <- letters[i]
+  url <- paste0("https://www.basketball-reference.com/players/",l,"/")
+  df <- get.player.base.info(url)
+  dfs[[i]] <- as.data.table(df)
+}
+#Combine
+bios <- rbind(dfs[[1]], dfs[[2]], dfs[[3]], dfs[[4]], dfs[[5]], dfs[[6]],
+              dfs[[7]], dfs[[8]], dfs[[7]], dfs[[8]], dfs[[9]], dfs[[10]],
+              dfs[[11]], dfs[[12]], dfs[[13]], dfs[[14]], dfs[[15]], dfs[[16]],
+              dfs[[17]], dfs[[18]], dfs[[17]], dfs[[18]], dfs[[19]], dfs[[20]],
+              dfs[[21]], dfs[[22]], dfs[[23]], dfs[[24]], dfs[[25]])
+
+
+
+##DATA CLEANING##
+bios <- as.data.frame(bios)
+bios <- na.omit(bios)
+#convert start year to integer
+bios$year.start <- as.integer(bios$year.start)
+#convert retire year to integer
+bios$year.retire <- as.integer(bios$year.retire)
+#convert weight to integer
+bios$weight <- as.integer(bios$weight)
+#convert height to inches
+for (n in 1:nrow(bios)){
+  m <- unlist(c(strsplit(bios[n,5], "-")))
+  feet <- as.integer(m[1])
+  inches <- as.integer(m[2])
+  bios[n,5] <- as.numeric(feet*12 + inches)
+}
+
+#remove duplicate rows
+bios <- bios[which(bios$year.retire > 1995 & bios$year.retire < 2017),]
+bios <- bios %>% distinct()
+
+#remove asterisks from names
+for (n in 1:nrow(all)){
+  name = all[[1]][[n]]
+  all[[1]][[n]] <- str_remove(name, "[*]")
+}
+for (n in 1:nrow(bios)){
+  name = bios[[1]][[n]]
+  bios[[1]][[n]] <- str_remove(name, "[*]")
+}
+
+
+
+
+##ADDING BIO INFO TO PLAYER STATS##
+#initiate columns
+all$height <- NA
+all$weight <- NA
+all$college <- NA
+all$yr_start <- NA
+all$yr_retire <- NA
+#create list of names
+names <- bios$player
+#add bio info to player stats
+for (n in 1:nrow(all)){
+  p = all[[1]][[n]]
+  if (p %in% names){
+    r = bios[which(bios$player==p),]
+    all[[31]][[n]] <- r[1,5]
+    all[[32]][[n]] <- r[1,6]
+    all[[33]][[n]] <- r[1,8]
+    all[[34]][[n]] <- r[1,2]
+    all[[35]][[n]] <- r[1,3]
+  }
+}
+
+
+
+
+##CLEANING PLAYER STATS##
+#Merging franchises which changed locations
+for (n in 1:nrow(all)){
+  team = all[[4]][[n]]
+  if (team == "WSB"){
+    all[[4]][[n]] <- "WAS"
+  }
+  if (team == "VAN"){
+    all[[4]][[n]] <- "MEM"
+  }
+  if (team == "CHH" | team == "NOH" | team == "NOK"){
+    all[[4]][[n]] <- "NOP"
+  }
+  if (team == "CHA"){
+    all[[4]][[n]] <- "CHO"
+  }
+  if (team == "NJN"){
+    all[[4]][[n]] <- "BRK"
+  }
+}
+all$height <- as.numeric(all$height)
+
+
+
+
+##CREATE ROOKIE VARIABLE##
+#initiate column
+all$rookie <- NA
+#create rookie indicator variable
+for (n in 1:nrow(all)){
+  if(is.na(all[[34]][[n]])){    #ignore rows with missing info
+    next
+  }
+  if (all[[34]][[n]]==all[[30]][[n]]){
+    all[[36]][[n]] <- "Rookie"
+  }
+  else{
+    all[[36]][[n]] <- "Not Rookie"
+  }
+}
+
+
+
+
+##CREATE MISSED SHOTS VARIABLE##
+all$miss <- all$fga - all$fg
+
+##CREATE EFFICIENCY VARIABLE##
+all$eff <- all$pts + all$tot_reb + all$stl + all$ast + all$blk - all$tover - all$miss
+
+##CREATE PRIMARY POSITION VARIABLE##
+all$prim_pos <- NA
+for (n in 1:nrow(all)){
+  p = all[[2]][[n]]
+  if (nchar(p) < 3){
+    all[[39]][[n]] <- p
+  }
+  if (str_detect(p, "^PG")==TRUE){
+    all[[39]][[n]] <- "PG"
+  }
+  if (str_detect(p, "^SG")==TRUE){
+    all[[39]][[n]] <- "SG"
+  }
+  if (str_detect(p, "^SF")==TRUE){
+    all[[39]][[n]] <- "SF"
+  }
+  if (str_detect(p, "^PF")==TRUE){
+    all[[39]][[n]] <- "PF"
+  }
+  if (str_detect(p, "^C")==TRUE){
+    all[[39]][[n]] <- "C"
+  }
+}
+
+##CREATE POSITION NUMBER VARIABLE##
+#This will allow for position to be treated as 
+#a numerical variable in further analysis
+all$pos_num <- 0
+for (n in 1:nrow(all)){
+  p = all[[39]][[n]]
+  if (p == "PG"){
+    all[[40]][[n]] <- 1
+  }
+  if (p =="SG"){
+    all[[40]][[n]] <- 2
+  }
+  if (p == "SF"){
+    all[[40]][[n]] <- 3
+  }
+  if (p =="PF"){
+    all[[40]][[n]] <- 4
+  }
+  if (p =="C"){
+    all[[40]][[n]] <- 5
+  }
+}
+
+##CREATE YEARS OF EXPERIENCE VARIABLE##
+all$year_exp <- NA
+for (n in 1:nrow(all)){
+  if (is.na(all[[34]][[n]])){next}
+  else{
+    all[[41]][[n]] <- all[[30]][[n]] - all[[34]][[n]]
+  }
+}
+
+
+
+##DATASETS FOR TABLEAU##
+height_weight <- na.omit(all)
+
+##CREATE SUBSET OF DUKE AND UNC PLAYERS##
+#Duke players
+duke <- filter(all, college == "Duke")
+#UNC players
+unc <- filter(all, college == "UNC")
+#Combine
+duke_unc <- rbind(duke, unc)
+
+##WRITE CSV FILES##
+write.csv(all, "players.csv", 
+          row.names=FALSE)
+write.csv(height_weight, "height_weight.csv", 
+          row.names=FALSE)
+write.csv(duke_unc, "duke_unc.csv",
+          row.names=FALSE)
+
+
+##IS LEBRON JAMES THE BEST PLAYER IN THE LEAGUE
+##SCRAPE MVPS##
+scrape_mvp <- function(year){
+  url <- paste0("https://www.basketball-reference.com/awards/awards_",year,".html")
+  html.raw <- read_html(url)
+  #Store output as a vector of character strings
+  vector.raw <- 
+    html.raw %>%
+    html_nodes(".center , .right , .left") %>%
+    html_text()
+  vector.raw = vector.raw[26:length(vector.raw)]
+  df.raw <- 
+    tibble(
+      rank = vector.raw,
+      player  = lead(vector.raw,1),
+      age = lead(vector.raw,2),
+      team = lead(vector.raw,3),
+      first = lead(vector.raw,4),
+      pts_won = lead(vector.raw,5),
+      pts_max = lead(vector.raw,6),
+      share = lead(vector.raw,7),
+      g = lead(vector.raw,8),
+      mp = lead(vector.raw,9),
+      pts = lead(vector.raw,10),
+      trb = lead(vector.raw,11),
+      ast = lead(vector.raw,12),
+      stl = lead(vector.raw,13),
+      blk = lead(vector.raw,14),
+      fg_p = lead(vector.raw,15),
+      threes_p = lead(vector.raw,16),
+      ft_p = lead(vector.raw,17),
+      ws = lead(vector.raw,18),
+      ws48  = lead(vector.raw,19)
+    )
+  #Clean the output
+  df.raw <- df.raw %>%
+    #Every 20th row is a legitmate row that we want to save, that's because the dataframe has 20 columns
+    .[seq(1,nrow(.),20),]
+  arr = as.array(df.raw[[2]])
+  end = which(df.raw$rank == "",) - 1
+  names = arr[1:end]
+  return(names)
+
+  
+#subset to years that LeBron was in the league
+lebron_era <- all[which(all$year >= 2003),]
+lebron_years <- c(2004, 2005, 2006, 2007, 2008, 2009,
+                  2010, 2011, 2012, 2013, 2014, 2015, 2016)
+#scrape info on MVP voting for each season
+mvplist <- list(c(scrape_mvp(2004)), c(scrape_mvp(2005)),
+                c(scrape_mvp(2006)), c(scrape_mvp(2007)),
+                c(scrape_mvp(2008)), c(scrape_mvp(2009)),
+                c(scrape_mvp(2010)), c(scrape_mvp(2011)), 
+                c(scrape_mvp(2012)), c(scrape_mvp(2013)),
+                c(scrape_mvp(2014)), c(scrape_mvp(2015)),
+                c(scrape_mvp(2016)))
+
+#create variable which indicates whether
+#a player was considered for the MVP award
+lebron_era$mvp_vote <- 0
+
+for (n in 1:13){
+  yr = lebron_years[n]
+  mvps = mvplist[[n]]
+  for (i in 1:nrow(lebron_era)){
+    if (lebron_era[[30]][[i]] == yr){
+      p = lebron_era[[1]][[i]]
+      if (p %in% mvps){
+        lebron_era[[42]][[i]] <- 1
+      } else{next}
+    } else{next}
+  }
+}
+
+#subset to include only players eligible for the MVP vote
+sig_players <- lebron_era[which(lebron_era$mvp_vote==1),]    #significant players
+#create indicator to designate players as LeBron or not LeBron
+sig_players$ind <- NA
+for (n in 1:nrow(sig_players)){
+  if (sig_players[[1]][[n]] == "LeBron James"){
+    sig_players[[43]][[n]] <- "LeBron"
+  }
+  else{
+    sig_players[[43]][[n]] <- "Not LeBron"
+  }
+}
+
+#conduct hypothesis test
+ht <- inference(y = eff, x = ind, data=sig_players, statistic = "mean", type = "ht", null = 0, alternative = "greater", method = "theoretical")
+ht
+
+
+
+##THE ONE-AND-DONE RULE##
+#subset to rookies
+rookies <- all[which(all$rookie == "Rookie"),]
+rookies <- na.omit(rookies)
+#create treatment indicating whether rookie played
+#before or after rule took effect
+rookies$treatment <- 0
+for (n in 1:nrow(rookies)){
+  y = rookies$year[n]
+  if (y > 2005){
+    rookies$treatment[n] <- 1
+  }
+}
+
+
+
+##CREATE CONFERENCE VARIABLE##
+amer_ath <- c("Central Florida", "Cincinnati", "UConn", "Houston", "Memphis", "University of South Florida", "SMU", "Temple", "Tulane", "Tulsa", "Wichita State") 
+atl_10 <- c("Davidson", "Dayton", "Duquesne", "Fordham", "George Mason University", "George Washington", "La Salle", "UMass", "Rhode Island", "University of Richmond", "St. Bonaventure", "Saint Joseph's", "Saint Louis University", "Virginia Commonwealth")
+atl_coast <- c("Boston College", "Clemson", "Florida State", "Louisville", "NC State", "Notre Dame", "Syracuse", "Duke", "Georgia Tech", "Miami (FL)", "UNC", "Pitt", "Virginia", "Virginia Tech")
+big_12 <- c("Baylor", "Iowa State", "Kansas", "Kansas State", "Oklahoma", "Oklahoma State", "Texas", "Texas Tech", "West Virginia")
+big_east <- c("Butler", "Creighton", "DePaul", "Georgetown", "Marquette", "Providence", "St. John's", "Seton Hall", "Villanova", "Xavier")
+big_10 <- c("Indiana", "Maryland", "Michigan", "Michigan State", "Ohio State", "Penn State", "Illinois", "Iowa", "Minnesota", "Nebraska", "Northwestern", "Purdue", "Wisconsin")
+conf_usa <- c("University of Alabama at Birmingham", "UNC Charlotte", "University of Texas at San Antonio", "University of Southern Mississippi", "Western Kentucky", "Marshall", "Louisiana Tech", "Florida International University")
+mid_amer <- c("Miami University", "Bowling Green", "Kent State University", "Ball State University", "Central Michigan University", "Eastern Michigan University", "Northern Illinois", "University of Toledo", "Western Michigan University")
+mount_west <- c("Colorado State", "UNLV", "New Mexico", "San Diego State", "Utah State University", "Wyoming")
+pac_12 <- c("Arizona", "Arizona State", "Colorado", "Oregon", "Oregon State", "UCLA")
+southeast <- c("Alabama", "Arkansas", "Auburn", "Florida", "Georgia", "Kentucky", "LSU", "University of Mississippi", "Mississippi State", "Missouri", "USC", "Tennessee", "Vanderbilt",  "Texas A&M")
+west_coast <- c("Gonzaga", "Pepperdine", "University of the Pacific", "University of Portland", "Saint Mary's", "Santa Clara University")
+
+rookies$conf <- "Other"
+for (n in 1:nrow(rookies)){
+  school = rookies$college[n]
+  if (school == ""){
+    rookies$conf[n] <- "None"
+  }
+  if (school %in% amer_ath){
+    rookies$conf[n] <- "American Athletic"
+  }
+  if (school %in% atl_10){
+    rookies$conf[n] <- "Atlantic 10"
+  }
+  if (school %in% atl_coast){
+    rookies$conf[n] <- "Atlantic Coast"
+  }
+  if (school %in% big_12){
+    rookies$conf[n] <- "Big 12"
+  }
+  if (school %in% big_east){
+    rookies$conf[n] <- "Big East"
+  }
+  if (school %in% big_10){
+    rookies$conf[n] <- "Big 10"
+  }
+  if (school %in% conf_usa){
+    rookies$conf[n] <- "Conference USA"
+  }
+  if (school %in% mid_amer){
+    rookies$conf[n] <- "Mid-American"
+  }
+  if (school %in% mount_west){
+    rookies$conf[n] <- "Mountain West"
+  }
+  if (school %in% pac_12){
+    rookies$conf[n] <- "Pac-12"
+  }
+  if (school %in% southeast){
+    rookies$conf[n] <- "Southeastern"
+  }
+  if (school %in% west_coast){
+    rookies$conf[n] <- "West Coast"
+  }
+  else{
+    a <- as.array(strsplit(school, ","))
+    if (length(unlist(a)) > 1){
+      rookies$conf[n] <- "Multiple"
+    }
+  }
+}
+
+
+#subset to variables of interest
+rookies2 <- rookies[,c("eff", "prim_pos", "height", "weight", "team", "age", "conf", "treatment", "games_played")]
+rookies2$prim_pos = as.factor(rookies2$prim_pos)
+rookies2$team = as.factor(rookies2$team)
+rookies2$conf = as.factor(rookies2$conf)
+#linear model
+lm <- lm(eff ~ prim_pos + height + weight + team + age + conf + games_played, data = rookies2)
+#propensity score model
+pred <- glm(treatment ~ prim_pos + height + weight + team + age + conf + games_played, 
+            data=rookies2, family = binomial(link="logit"))
+
+
+
+##CHECKING OVERLAP##
+ps_model = glm(pred, data = rookies2, family=binomial(link="logit"))
+rookies2.pro <- rookies2
+rookies2.pro$ps <- fitted(ps_model)
+
+#overlap check
+a<-hist(rookies2.pro$ps[which(rookies2.pro$treatment==0)],breaks=50,freq=FALSE) 
+a$counts<-a$counts/sum(a$counts)
+b<-hist(rookies2.pro$ps[which(rookies2.pro$treatment==1)],breaks=50,add=T)
+b$counts<-b$counts/sum(b$counts)
+
+make_plot <- function(){
+  plot(a,col=rgb(1,0,0,0.5),main="Overlap Check",
+       cex.main=0.9,xlab="Estimated Propensity Score",ylab="Density")
+  plot(b,add=TRUE,col=rgb(0,0,1,0.5),
+       main="Overlap Check",xlab="Estimated Propensity Score",ylab="Density")
+  legend("topright",legend=c("Control Group","Treatment Group"),
+         col=c("red","blue"),pch=15,cex=0.7)
+}
+
+make_plot()
+
+
+#specify overlapping regions
+low_bound<-max(min(rookies2.pro$ps[which(rookies2.pro$treatment==1)]),
+               min(rookies2.pro$ps[which(rookies2.pro$treatment==0)]))
+up_bound<-min(max(rookies2.pro$ps[which(rookies2.pro$treatment==1)]),
+              max(rookies2.pro$ps[which(rookies2.pro$treatment==0)]))
+
+#Disgard the sample out of the common support
+olp.rookies <-subset(rookies2.pro,rookies2.pro$ps>=low_bound&rookies2.pro$ps<=up_bound)
+olp.rookies <- na.omit(olp.rookies)
+
+
+
+
+##MATCHING MODEL##
+M <- Match(Y = olp.rookies$eff,
+           Tr = olp.rookies$treatment,
+           estimand = "ATT",
+           X = data.matrix(olp.rookies[,-c(1,8,10)]),
+           M=5, Weight = 1)
+
+compare_models <- function(overlapdata, matchmodel){
+  
+  treated <- unique(matchmodel$index.treated)
+  treat_size <- length(treated)
+  control <- matchmodel$index.control
+  control_size<-(dim(overlapdata)[1])-treat_size
+  
+  ##ASD: Raw Data
+  olp_sd<- apply(data.matrix(overlapdata[,-c(1,8,10)]),
+                 MARGIN=2,FUN=function(x){
+                   sqrt(var(x[treated])/treat_size
+                        +var(x[-treated])/control_size)})
+  
+  ori_d <- apply(data.matrix(rookies2[,-c(1,8)]),
+                 MARGIN=2, FUN=function(x){
+                   abs(mean(x[rookies2$treatment==1]) - mean(x[rookies2$treatment==0]))})
+  
+  ori_sd <- apply(data.matrix(rookies2[,-c(1,8)]),
+                  MARGIN=2, FUN=function(x){
+                    sqrt((var(x[rookies2$treatment==1])/sum(rookies2$treatment)
+                          +var(x[rookies2$treatment==0])/sum(1-rookies2$treatment)))})
+  
+  ori_asd <- ori_d/ori_sd
+  
+  ori_df<-data.frame(mean=ori_d,sd=ori_sd,asd=ori_asd)
+  
+  ori_plot <- ggplot(data=ori_df,aes(x=names(ori_asd),y=asd,ymin=asd,ymax=asd))+
+    geom_pointrange(colour = "red3")+geom_hline(yintercept=0,lty=2)+coord_flip()+
+    xlab("")+ylab("ASD of Raw Data")
+  
+  ##ASD: Matched
+  match_d<-apply(data.matrix(overlapdata[,-c(1,8,10)]),MARGIN=2,FUN=function(x)
+  {abs(mean(x[treated])-mean(x[control]))})
+  match_asd<-match_d/olp_sd
+  
+  match_df<-data.frame(mean=match_d,sd=olp_sd,asd=match_asd)
+  
+  
+  ##ASD: Weighted
+  w <- (overlapdata$ps/(1-overlapdata$ps))
+  w_calc <- apply(data.matrix(overlapdata[,-c(1,8,10)]),MARGIN=2,FUN=function(x){
+    abs(mean(x[treated])-sum(x[-treated]*w[-treated])/sum(w[-treated]))})
+  weight_asd<-w_calc/olp_sd
+  weight_df<-data.frame(mean=w_calc,sd=olp_sd,asd=weight_asd)
+  
+  
+  #ASD comparison between methods
+  comp <- boxplot(ori_asd, weight_asd, match_asd,
+                  names=c("Raw Data","Weighting","Matching"),
+                  ylab="Abs Standardized Difference", 
+                  col = c("limegreen", "cornflowerblue", "tomato2"))
+  
+  
+  a <- rbind(ori_asd, weight_asd, match_asd)
+  d <- rbind(ori_df, weight_df, match_df)
+  d$rows <- as.array(row.names(d))
+  
+  d$model <- "original"
+  d$covars <- NA
+  for (n in 1:nrow(d)){
+    if (str_detect(d$rows[n], "1")){
+      d$model[n] <- "weighted"
+    } 
+    if (str_detect(d$rows[n], "2")){
+      d$model[n] <- "matched"
+    }
+    if(str_detect(d$rows[n], "prim_pos*")){
+      d$covars[n] <- "prim_pos"
+    }
+    if(str_detect(d$rows[n], "team*")){
+      d$covars[n] <- "team"
+    }
+    if(str_detect(d$rows[n], "age*")){
+      d$covars[n] <- "age"
+    }
+    if(str_detect(d$rows[n], "height*")){
+      d$covars[n] <- "height"
+    }
+    if(str_detect(d$rows[n], "weight*")){
+      d$covars[n] <- "weight"
+    }
+    if(str_detect(d$rows[n], "conf*")){
+      d$covars[n] <- "conf"
+    }
+    if(str_detect(d$rows[n], "games_played*")){
+      d$covars[n] <- "games_played"
+    }
+  }
+  
+  p <- ggplot(data=d,aes(y=covars,x=asd,xmin=min(asd),xmax=max(asd), color=model))+
+    geom_point(size=3)+xlab("absolute standardized difference")+ylab("")+title("ASD of Models")
+  par(mfrow=c(1,2))
+  comp
+  p
+}
+
+compare_models(olp.rookies, M)
+
+summary(M)
